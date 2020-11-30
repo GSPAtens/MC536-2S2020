@@ -1,4 +1,4 @@
-#lab 07
+# lab 07
 
 ### Gabriel de Sousa Pereira
 RA: 216194
@@ -10,29 +10,29 @@ RA: 216194
 Calcule o Pagerank do exemplo da Wikipedia em Cypher:
 
 ~~~cypher
-//Carregando os dados
+//Carregando os dados e compondo o grafo
 LOAD CSV WITH HEADERS FROM 'https://raw.githubusercontent.com/santanche/lab2learn/master/network/pagerank/pagerank-wikipedia.csv' AS line
 MERGE (p1:WikiPage {name:line.source})
 MERGE (p2:WikiPage {name:line.target})
 CREATE (p1)-[:WikiLinks]->(p2)
-~~~
 
-~~~cypher
 CALL gds.graph.create(
   'WikiGraph',
   'WikiPage',
   'WikiLinks'
 )
+~~~
 
+~~~cypher
+//Gerando o PageRank dos nós
 CALL gds.pageRank.stream('WikiGraph')
 YIELD nodeId, score
 RETURN gds.util.asNode(nodeId).name AS name, score
 ORDER BY score DESC, name ASC
 ~~~
 
-Salvando o PageRank em cada um dos nós:
-
 ~~~cypher
+//Salvando o atributo PageRank nos nós
 CALL gds.pageRank.stream('WikiGraph')
 YIELD nodeId, score
 MATCH (p:WikiPage {name: gds.util.asNode(nodeId).name})
@@ -42,11 +42,40 @@ SET p.pagerank = score
 
 ### Exercício 2
 
-Departing from a Drug-Drug graph created in a previous lab, whose relationship determines drugs taken together, apply a community detection in it to see the results.
-
-Criando o grafo a partir dos nós e arestas anteriores:
+Partindo do grafo Drug-Drug criado no laboratório anterior, cuja relação determina drogas tomadas em conjunto, aplique uma detecção de comunidade nele para ver os resultados:
 
 ~~~cypher
+//Caregando o grafo do lab anterior (lab06)
+LOAD CSV WITH HEADERS FROM 'https://raw.githubusercontent.com/santanche/lab2learn/master/data/faers-2017/drug.csv' AS line
+CREATE (:Drug {code: line.code, name: line.name});
+
+CREATE INDEX ON :Drug(code);
+
+LOAD CSV WITH HEADERS FROM 'https://raw.githubusercontent.com/santanche/lab2learn/master/data/faers-2017/pathology.csv' AS line
+CREATE (:Pathology { code: line.code, name: line.name});
+
+CREATE INDEX ON :Pathology(code);
+
+LOAD CSV WITH HEADERS FROM 'https://raw.githubusercontent.com/santanche/lab2learn/master/data/faers-2017/drug-use.csv' AS line
+MATCH (d:Drug {code: line.codedrug})
+MATCH (p:Pathology {code: line.codepathology})
+MERGE (d)-[t:Treats]->(p)
+ON CREATE SET t.weight=1
+ON MATCH SET t.weight=t.weight+1;
+
+MATCH (d1:Drug)-[a]->(p:Pathology)<-[b]-(d2:Drug)
+WHERE a.weight > 20 AND b.weight > 20
+MERGE (d1)<-[r:Relates]->(d2)
+ON CREATE SET r.weight=1
+ON MATCH SET r.weight=r.weight+1;
+
+MATCH (d1:Drug)<-[:Relates]->(d2:Drug)
+RETURN d1, d2
+LIMIT 20;
+~~~~
+
+~~~cypher
+//Criando o grafo de comunidades
 CALL gds.graph.create(
   'drugRelationGraph',
   'Drug',
@@ -58,18 +87,16 @@ CALL gds.graph.create(
 )
 ~~~
 
-Aplicando o algoritmo de determinação de comunidades:
-
 ~~~cypher
+//Utilizando o algoritmo de determinação de comunidades:
 CALL gds.louvain.stream('drugRelationGraph')
 YIELD nodeId, communityId
 RETURN gds.util.asNode(nodeId).name AS name, communityId
 ORDER BY communityId ASC
 ~~~
 
-Salvando estas comunidades como propriedades dos nós do grafo:
-
 ~~~cypher
+//Salvando as comunidades como propriedades dos nós do grafo:
 CALL gds.louvain.stream('drugRelationGraph')
 YIELD nodeId, communityId
 MATCH (d:Drug {name: gds.util.asNode(nodeId).name})
